@@ -1,0 +1,5 @@
+app\AreaChecker.class
+app\ControllerServlet.class
+app\PointCheckResult.class
+app\ResultsBean.class
+app\AreaCheckServlet.class
