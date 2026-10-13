@@ -91,7 +91,13 @@
         %>{ x: <%= lastResult.getX() %>, y: <%= lastResult.getY() %>, r: <%= lastResult.getR() %>, hit: <%= lastResult.isHit() %> }<%
             } else {
         %>null<% } %>;
+        const allPoints = [<%
+            for (int i = 0; i < history.size(); i++) {
+                PointCheckResult p = history.get(i);
+        %><%= i > 0 ? "," : "" %>{ x: <%= p.getX() %>, y: <%= p.getY() %>, r: <%= p.getR() %> }<%
+            }
+        %>];
     </script>
-    <script src="<%= request.getContextPath() %>/js/form.js"></script>
+    <script src="<%= request.getContextPath() %>/js/form.js?v=<%= System.currentTimeMillis() %>"></script>
 </body>
 </html>

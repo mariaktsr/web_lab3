@@ -7,8 +7,15 @@ const rError = document.getElementById('rError');
 const yInput = document.getElementById('yInput');
 const form = document.getElementById('pointForm');
 
+const base = (typeof contextPath !== 'undefined') ? contextPath : '';
+
+const points = (typeof allPoints !== 'undefined') ? allPoints : [];
+
 let currentR = (typeof lastPoint !== 'undefined' && lastPoint) ? lastPoint.r : 2;
 rInput.value = currentR;
+
+const missSound = new Audio(base + '/sounds/miss.wav');
+let waiting = false; 
 
 document.querySelectorAll('#yButtons > button').forEach(btn => {
     btn.addEventListener('click', function () {
@@ -17,14 +24,16 @@ document.querySelectorAll('#yButtons > button').forEach(btn => {
         yInput.value = this.dataset.y;
     });
 });
- 
+
+window.addEventListener('pageshow', function () { waiting = false; });
+
 function sanitizeInput(input) {
     let value = input.value;
-    
+
     value = value.replace(',', '.');
-    
+
     value = value.replace(/[^0-9.\-]/g, '');
-   
+    
     const minusCount = (value.match(/-/g) || []).length;
     if (minusCount > 1) {
         value = '-' + value.replace(/-/g, '');
@@ -37,7 +46,7 @@ function sanitizeInput(input) {
         const firstDot = value.indexOf('.');
         value = value.substring(0, firstDot + 1) + value.substring(firstDot + 1).replace(/\./g, '');
     }
-    
+
     input.value = value;
 }
 
@@ -60,16 +69,20 @@ xInput.addEventListener('input', function() {
 
 function validateR() {
     const val = rInput.value.trim();
-    if (val === '') { rError.textContent = ''; return false; }
     const num = parseFloat(val);
-    if (isNaN(num) || num < 1 || num > 4) {
+
+    currentR = null;
+    if (val === '') {
+        rError.textContent = '';
+    } else if (isNaN(num) || num < 1 || num > 4) {
         rError.textContent = 'R должен быть числом от 1 до 4';
-        return false;
+    } else {
+        rError.textContent = '';
+        currentR = num;
     }
-    rError.textContent = '';
-    currentR = num;
+
     drawArea();
-    return true;
+    return currentR !== null;
 }
 
 rInput.addEventListener('input', function() {
@@ -77,13 +90,41 @@ rInput.addEventListener('input', function() {
     validateR();
 });
 
+function checkHit(x, y, r) {
+    if (x >= 0 && x <= r / 2 && y >= 0 && y <= r) return true;
+    if (x >= -r / 2 && x <= 0 && y >= 0 && y <= r / 2 + x) return true;
+    if (x >= 0 && y <= 0 && x * x + y * y <= (r / 2) * (r / 2)) return true;
+    return false;
+}
+
+function sendAfterSound(x, y, r, action) {
+    if (checkHit(x, y, r)) {
+        action();
+        return;
+    }
+    waiting = true;
+    missSound.currentTime = 0;
+    missSound.play().catch(function () {});
+    setTimeout(action, 1400); 
+}
+
 form.addEventListener('submit', function (e) {
+    if (waiting) { e.preventDefault(); return; }
+
     const xOk = validateX();
     const rOk = validateR();
     if (!xOk || !rOk || xInput.value.trim() === '' || rInput.value.trim() === '') {
-        e.preventDefault(); // Останавливаем отправку
+        e.preventDefault();
         if (xInput.value.trim() === '') xError.textContent = 'Заполните X';
         if (rInput.value.trim() === '') rError.textContent = 'Заполните R';
+        return;
+    }
+
+    const x = parseFloat(xInput.value);
+    const y = parseFloat(yInput.value);
+    if (!checkHit(x, y, currentR)) {
+        e.preventDefault(); 
+        sendAfterSound(x, y, currentR, function () { form.submit(); });
     }
 });
 
@@ -113,58 +154,70 @@ function drawArea() {
     ctx.beginPath(); ctx.moveTo(cx, 15); ctx.lineTo(cx - 5, 25); ctx.lineTo(cx + 5, 25); ctx.closePath(); ctx.fill();
 
     ctx.font = '14px Arial'; ctx.fillStyle = '#333';
+    ctx.textAlign = 'left';
     ctx.fillText('X', W - 15, cy + 18);
     ctx.fillText('Y', cx + 10, 15);
 
-    ctx.font = '12px Arial'; ctx.fillStyle = '#555';
-    ctx.textAlign = 'center';
-    ctx.fillText('R', cx + rPx, cy + 18);
-    ctx.fillText('R/2', cx + rPx / 2, cy + 18);
-    ctx.fillText('-R/2', cx - rPx / 2, cy + 18);
-    ctx.fillText('-R', cx - rPx, cy + 18);
-    ctx.textAlign = 'right';
-    ctx.fillText('R', cx - 8, cy - rPx + 4);
-    ctx.fillText('R/2', cx - 8, cy - rPx / 2 + 4);
-    ctx.fillText('-R/2', cx - 8, cy + rPx / 2 + 4);
-    ctx.fillText('-R', cx - 8, cy + rPx + 4);
+    if (currentR !== null) {
+        ctx.font = '12px Arial'; ctx.fillStyle = '#555';
+        ctx.textAlign = 'center';
+        ctx.fillText('R', cx + rPx, cy + 18);
+        ctx.fillText('R/2', cx + rPx / 2, cy + 18);
+        ctx.fillText('-R/2', cx - rPx / 2, cy + 18);
+        ctx.fillText('-R', cx - rPx, cy + 18);
+        ctx.textAlign = 'right';
+        ctx.fillText('R', cx - 8, cy - rPx + 4);
+        ctx.fillText('R/2', cx - 8, cy - rPx / 2 + 4);
+        ctx.fillText('-R/2', cx - 8, cy + rPx / 2 + 4);
+        ctx.fillText('-R', cx - 8, cy + rPx + 4);
 
-    ctx.fillStyle = 'rgba(52, 152, 219, 0.55)';
-    ctx.strokeStyle = 'rgba(41, 128, 185, 0.9)';
-    ctx.lineWidth = 2;
+        ctx.fillStyle = 'rgba(52, 152, 219, 0.55)';
+        ctx.strokeStyle = 'rgba(41, 128, 185, 0.9)';
+        ctx.lineWidth = 2;
 
-    // прямоугольник
-    ctx.beginPath();
-    ctx.rect(cx, cy - rPx, rPx / 2, rPx);
-    ctx.fill(); ctx.stroke();
-
-    // треугольник
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);              
-    ctx.lineTo(cx, cy - rPx / 2);    
-    ctx.lineTo(cx - rPx / 2, cy);    
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // четверть круга 
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, rPx / 2, 0, Math.PI / 2, false);
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // последняя проверенная точка, если есть
-    if (typeof lastPoint !== 'undefined' && lastPoint) {
-        const px = cx + lastPoint.x * scale;
-        const py = cy - lastPoint.y * scale;
+        // прямоугольник
         ctx.beginPath();
-        ctx.arc(px, py, 6, 0, Math.PI * 2);
-        ctx.fillStyle = lastPoint.hit ? '#27ae60' : '#e74c3c';
+        ctx.rect(cx, cy - rPx, rPx / 2, rPx);
+        ctx.fill(); ctx.stroke();
+
+        // треугольник
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx, cy - rPx / 2);
+        ctx.lineTo(cx - rPx / 2, cy);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+
+        // четверть круга
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, rPx / 2, 0, Math.PI / 2, false);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+    } else {
+        // R не задан - области нет
+        ctx.font = 'bold 15px Arial'; ctx.fillStyle = '#e74c3c';
+        ctx.textAlign = 'center';
+        ctx.fillText('Задайте R (от 1 до 4), чтобы увидеть область', cx, 50);
+    }
+
+    // все проверенные точки из таблицы
+    points.forEach(function (p) {
+        let color = '#95a5a6';
+        if (currentR !== null) {
+            color = checkHit(p.x, p.y, currentR) ? '#27ae60' : '#e74c3c';
+        }
+        ctx.beginPath();
+        ctx.arc(cx + p.x * scale, cy - p.y * scale, 6, 0, Math.PI * 2);
+        ctx.fillStyle = color;
         ctx.fill();
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
-    }
+    });
 }
 
 canvas.addEventListener('click', function (e) {
+    if (waiting) return;
+
     const rVal = parseFloat(rInput.value.trim().replace(',', '.'));
     if (rInput.value.trim() === '' || isNaN(rVal) || rVal < 1 || rVal > 4) {
         alert('Сначала задайте корректный радиус R (от 1 до 4) — иначе невозможно определить координаты.');
@@ -184,10 +237,13 @@ canvas.addEventListener('click', function (e) {
     const xVal = ((pixelX - cx) / scale).toFixed(2);
     const yVal = ((cy - pixelY) / scale).toFixed(2);
 
-    const base = (typeof contextPath !== 'undefined') ? contextPath : '';
-    window.location.href = base + '/area?x=' + encodeURIComponent(xVal)
+    const url = base + '/area?x=' + encodeURIComponent(xVal)
         + '&y=' + encodeURIComponent(yVal)
         + '&r=' + encodeURIComponent(rVal);
+
+    sendAfterSound(parseFloat(xVal), parseFloat(yVal), rVal, function () {
+        window.location.href = url;
+    });
 });
 
 drawArea();

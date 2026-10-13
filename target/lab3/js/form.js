@@ -7,8 +7,38 @@ const rError = document.getElementById('rError');
 const yInput = document.getElementById('yInput');
 const form = document.getElementById('pointForm');
 
-let currentR = (typeof lastPoint !== 'undefined' && lastPoint) ? lastPoint.r : 2;
+const points = (typeof allPoints !== 'undefined') ? allPoints : [];
+console.log('form.js (4 правки): точек для отрисовки = ' + points.length);
+
+let currentR = points.length > 0 ? points[points.length - 1].r : 2;
 rInput.value = currentR;
+
+let busy = false;        
+
+function checkHit(x, y, r) {
+    if (x >= 0 && x <= r / 2 && y >= 0 && y <= r) return true;
+    if (x >= -r / 2 && x <= 0 && y >= 0 && y <= (r / 2 + x)) return true;
+    if (x >= 0 && y <= 0 && (x * x + y * y) <= (r / 2) * (r / 2)) return true;
+    return false;
+}
+
+const MISS_SOUND_URL = (typeof contextPath !== 'undefined' ? contextPath : '') + '/sounds/miss.wav';
+
+const MISS_DELAY = 1400;
+
+const missSound = new Audio(MISS_SOUND_URL);
+function playMissSound() {
+    missSound.currentTime = 0;
+    missSound.play().catch(function () { });
+}
+
+function runAfterCheck(x, y, r, action) {
+    if (checkHit(x, y, r)) { action(); return; }
+    busy = true;
+    playMissSound();
+    setTimeout(action, MISS_DELAY);
+}
+window.addEventListener('pageshow', function () { busy = false; });
 
 document.querySelectorAll('#yButtons > button').forEach(btn => {
     btn.addEventListener('click', function () {
@@ -58,18 +88,24 @@ xInput.addEventListener('input', function() {
     validateX();
 });
 
+function getValidR() {
+    const val = rInput.value.trim().replace(',', '.');
+    if (val === '') return null;
+    const num = Number(val);
+    if (!isFinite(num) || num < 1 || num > 4) return null;
+    return num;
+}
+
 function validateR() {
     const val = rInput.value.trim();
-    if (val === '') { rError.textContent = ''; return false; }
-    const num = parseFloat(val);
-    if (isNaN(num) || num < 1 || num > 4) {
+    currentR = getValidR();
+    if (val !== '' && currentR === null) {
         rError.textContent = 'R должен быть числом от 1 до 4';
-        return false;
+    } else {
+        rError.textContent = '';
     }
-    rError.textContent = '';
-    currentR = num;
-    drawArea();
-    return true;
+    drawArea();               
+    return currentR !== null;
 }
 
 rInput.addEventListener('input', function() {
@@ -78,12 +114,20 @@ rInput.addEventListener('input', function() {
 });
 
 form.addEventListener('submit', function (e) {
+    if (busy) { e.preventDefault(); return; }
     const xOk = validateX();
     const rOk = validateR();
-    if (!xOk || !rOk || xInput.value.trim() === '' || rInput.value.trim() === '') {
-        e.preventDefault(); // Останавливаем отправку
-        if (xInput.value.trim() === '') xError.textContent = 'Заполните X';
-        if (rInput.value.trim() === '') rError.textContent = 'Заполните R';
+    if (xInput.value.trim() === '') xError.textContent = 'Заполните X';
+    if (rInput.value.trim() === '') rError.textContent = 'Заполните R';
+    if (!xOk || !rOk) {
+        e.preventDefault();
+        return;
+    }
+    const x = parseFloat(xInput.value.trim());
+    const y = parseFloat(yInput.value);
+    if (!checkHit(x, y, currentR)) {      
+        e.preventDefault();
+        runAfterCheck(x, y, currentR, function () { form.submit(); });
     }
 });
 
@@ -91,7 +135,9 @@ function drawArea() {
     const W = canvas.width, H = canvas.height;
     const cx = W / 2, cy = H / 2;
     const scale = Math.min(W, H) / 12;
-    const rPx = currentR * scale;
+    const hasR = currentR !== null;
+    const rPx = hasR ? currentR * scale : 0;
+    canvas.style.cursor = hasR ? 'crosshair' : 'not-allowed';
 
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#fff';
@@ -113,60 +159,75 @@ function drawArea() {
     ctx.beginPath(); ctx.moveTo(cx, 15); ctx.lineTo(cx - 5, 25); ctx.lineTo(cx + 5, 25); ctx.closePath(); ctx.fill();
 
     ctx.font = '14px Arial'; ctx.fillStyle = '#333';
+    ctx.textAlign = 'left';
     ctx.fillText('X', W - 15, cy + 18);
     ctx.fillText('Y', cx + 10, 15);
 
-    ctx.font = '12px Arial'; ctx.fillStyle = '#555';
-    ctx.textAlign = 'center';
-    ctx.fillText('R', cx + rPx, cy + 18);
-    ctx.fillText('R/2', cx + rPx / 2, cy + 18);
-    ctx.fillText('-R/2', cx - rPx / 2, cy + 18);
-    ctx.fillText('-R', cx - rPx, cy + 18);
-    ctx.textAlign = 'right';
-    ctx.fillText('R', cx - 8, cy - rPx + 4);
-    ctx.fillText('R/2', cx - 8, cy - rPx / 2 + 4);
-    ctx.fillText('-R/2', cx - 8, cy + rPx / 2 + 4);
-    ctx.fillText('-R', cx - 8, cy + rPx + 4);
+    if (hasR) {
+        ctx.font = '12px Arial'; ctx.fillStyle = '#555';
+        ctx.textAlign = 'center';
+        ctx.fillText('R', cx + rPx, cy + 18);
+        ctx.fillText('R/2', cx + rPx / 2, cy + 18);
+        ctx.fillText('-R/2', cx - rPx / 2, cy + 18);
+        ctx.fillText('-R', cx - rPx, cy + 18);
+        ctx.textAlign = 'right';
+        ctx.fillText('R', cx - 8, cy - rPx + 4);
+        ctx.fillText('R/2', cx - 8, cy - rPx / 2 + 4);
+        ctx.fillText('-R/2', cx - 8, cy + rPx / 2 + 4);
+        ctx.fillText('-R', cx - 8, cy + rPx + 4);
 
-    ctx.fillStyle = 'rgba(52, 152, 219, 0.55)';
-    ctx.strokeStyle = 'rgba(41, 128, 185, 0.9)';
-    ctx.lineWidth = 2;
+        ctx.fillStyle = 'rgba(52, 152, 219, 0.55)';
+        ctx.strokeStyle = 'rgba(41, 128, 185, 0.9)';
+        ctx.lineWidth = 2;
 
-    // прямоугольник
-    ctx.beginPath();
-    ctx.rect(cx, cy - rPx, rPx / 2, rPx);
-    ctx.fill(); ctx.stroke();
-
-    // треугольник
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);              
-    ctx.lineTo(cx, cy - rPx / 2);    
-    ctx.lineTo(cx - rPx / 2, cy);    
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // четверть круга 
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, rPx / 2, 0, Math.PI / 2, false);
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // последняя проверенная точка, если есть
-    if (typeof lastPoint !== 'undefined' && lastPoint) {
-        const px = cx + lastPoint.x * scale;
-        const py = cy - lastPoint.y * scale;
+        // прямоугольник
         ctx.beginPath();
-        ctx.arc(px, py, 6, 0, Math.PI * 2);
-        ctx.fillStyle = lastPoint.hit ? '#27ae60' : '#e74c3c';
-        ctx.fill();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.rect(cx, cy - rPx, rPx / 2, rPx);
+        ctx.fill(); ctx.stroke();
+
+        // треугольник
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);              
+        ctx.lineTo(cx, cy - rPx / 2);    
+        ctx.lineTo(cx - rPx / 2, cy);    
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+
+        // четверть круга 
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, rPx / 2, 0, Math.PI / 2, false);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+    } else {
+        ctx.font = 'bold 15px Arial';
+        ctx.fillStyle = '#e74c3c';
+        ctx.textAlign = 'center';
+        ctx.fillText('Задайте R (от 1 до 4), чтобы увидеть область', cx, 50);
     }
+
+    points.forEach(function (p, i) {
+        const px = cx + p.x * scale;
+        const py = cy - p.y * scale;
+        let color = '#95a5a6';                      
+        if (hasR) color = checkHit(p.x, p.y, currentR) ? '#27ae60' : '#e74c3c';
+        const isLast = (i === points.length - 1);
+        ctx.beginPath();
+        ctx.arc(px, py, isLast ? 7 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = isLast ? '#2c3e50' : '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    });
 }
 
 canvas.addEventListener('click', function (e) {
-    const rVal = parseFloat(rInput.value.trim().replace(',', '.'));
-    if (rInput.value.trim() === '' || isNaN(rVal) || rVal < 1 || rVal > 4) {
+    if (busy) return;
+
+    const rVal = getValidR();               
+    if (rVal === null) {
+        rError.textContent = 'Сначала задайте R (от 1 до 4)';
         alert('Сначала задайте корректный радиус R (от 1 до 4) — иначе невозможно определить координаты.');
         return;
     }
@@ -181,13 +242,20 @@ canvas.addEventListener('click', function (e) {
     const cx = W / 2, cy = H / 2;
     const scale = Math.min(W, H) / 12;
 
-    const xVal = ((pixelX - cx) / scale).toFixed(2);
-    const yVal = ((cy - pixelY) / scale).toFixed(2);
+    const x = Number(((pixelX - cx) / scale).toFixed(2));
+    const y = Number(((cy - pixelY) / scale).toFixed(2));
+
+    if (x < -5 || x > 5 || y < -5 || y > 3) {
+        alert('Точка вне допустимых значений: X от -5 до 5, Y от -5 до 3.');
+        return;
+    }
 
     const base = (typeof contextPath !== 'undefined') ? contextPath : '';
-    window.location.href = base + '/area?x=' + encodeURIComponent(xVal)
-        + '&y=' + encodeURIComponent(yVal)
+    const url = base + '/area?x=' + encodeURIComponent(x)
+        + '&y=' + encodeURIComponent(y)
         + '&r=' + encodeURIComponent(rVal);
+
+    runAfterCheck(x, y, rVal, function () { window.location.href = url; });
 });
 
 drawArea();
